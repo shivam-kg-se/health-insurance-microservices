@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: SSA-EurekaServer
+
+server:
+  port: 8761
+#  make it as eureka server by disabling parent  project
+# by default eureka server will register itself with eureka server so
+#  we need to disable it by setting register-with-eureka and fetch-registry to false
+eureka:
+  client:
+    register-with-eureka: false
+    fetch-registry: false
+
+# iske use heartbeat chek karne ke liye hota hai
+#  server:
+#    enable-self-preservation: true

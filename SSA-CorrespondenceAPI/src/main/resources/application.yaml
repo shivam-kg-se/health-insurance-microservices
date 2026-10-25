@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: SSA-CorrespondenceAPI
+
+  boot:
+    admin:
+      client:
+        url: http://localhost:9999
+
+  config:
+    import: "optional:configserver:"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+
+  endpoint:
+    health:
+      show-details: always
+
+    env:
+      enabled: true
+      show-values: always
+server:
+  port: 7075
+
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: sshivamkgupta2005@gmail.com
+    password: vreo cljx gmbw rhtu
+
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka

@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: SSA-DataCollectionService
+
+  boot:
+    admin:
+      client:
+        url: http://localhost:9999
+
+  config:
+    import: "optional:configserver:"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+
+  endpoint:
+    health:
+      show-details: always
+
+    env:
+      enabled: true
+      show-values: always
+
+server:
+  port: 7072
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka

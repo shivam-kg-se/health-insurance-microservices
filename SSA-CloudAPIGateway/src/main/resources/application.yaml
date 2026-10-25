@@ -1,0 +1,74 @@
+spring:
+  application:
+    name: SSA-CloudAPIGateway
+
+  boot:
+    admin:
+      client:
+        url: http://localhost:9999
+
+  config:
+    import: "optional:configserver:"
+
+#write api gateway route and predicate info
+
+  cloud:
+    gateway:
+      routes:
+        - id: admin-api
+          uri: lb://SSA-ADMINAPI
+          predicates:
+            - Path=/plan-api/**
+
+        - id: SSA-ApplicationRegistrationServices
+          uri: lb://ApplicationRegistrationServices
+          predicates:
+            - Path=/CitizenAR-api/**
+
+        - id: SSA-CorrespondenceAPI
+          uri: lb://SSA-CorrespondenceAPI
+          predicates:
+            - Path=/co-triggers-api/**
+
+        - id: SSA-DataCollectionService
+          uri: lb://SSA-DataCollectionService
+          predicates:
+            - Path=/dc-api/**
+
+        - id: SSA-ElgibilityDeterminationService
+          uri: lb://SSA-ElgibilityDeterminationService
+          predicates:
+            - Path=/ed-api/**
+
+        - id: SSA-WEB-API
+          uri: lb://SSA-WEB-API
+          predicates:
+            - Path=/ssa-web-api/**
+
+        - id: SSA-BenifitInsuranceAPI
+          uri: lb://SSA-BenifitInsuranceAPI
+          predicates:
+            - Path=/bi-api/**
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka
+
+server:
+  port: 7777
+
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+
+  endpoint:
+    health:
+      show-details: always
+
+    env:
+      access: unrestricted
+      show-values: always

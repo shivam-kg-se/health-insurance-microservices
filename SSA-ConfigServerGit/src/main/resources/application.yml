@@ -1,0 +1,12 @@
+server:
+  port: 8888
+spring:
+  application:
+    name: SSA-ConfigServerGit
+  cloud:
+    config:
+      server:
+        git:
+          clone-on-start: true
+          default-label: main
+          uri: https://gitlab.com/shivam.kg.se/insurance-system-for-health.git
