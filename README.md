@@ -1,47 +1,58 @@
-# Health Insurance Microservices
+# Insurance System for Health
 
-A Java-based, Spring Boot microservices project for managing a health-insurance assistance workflow, including citizen application registration, plan administration, data collection, eligibility determination, benefit processing, and correspondence.
+A Java and Spring Boot microservices-based application for a citizen health-insurance assistance workflow. The system separates application registration, plan administration, data collection, eligibility determination, correspondence generation, and benefit-report processing into independently configured services, supported by an API Gateway and service-discovery/configuration infrastructure.
 
-> **Documentation status:** This is an initial README based on the repository structure and files visible in the project snapshot. Update the configuration-specific details (ports, database names, API routes, and exact versions) after verifying each service's `application.yml` / `application.yaml` and `pom.xml`.
+This README consolidates the supplied service-level analyses and the architecture and sequence diagrams. Endpoint and behavior details are included where they were identified in those analyses. Some infrastructure modules and cross-service interactions still require verification against the complete source code.
 
----
+## Contents
 
-## Table of Contents
-
-- [Overview](#overview)
+- [Project overview](#project-overview)
 - [Architecture](#architecture)
-- [Services and Modules](#services-and-modules)
-- [Illustrative Business Workflow](#illustrative-business-workflow)
-- [Technology Stack](#technology-stack)
-- [Repository Structure](#repository-structure)
-- [Prerequisites](#prerequisites)
-- [Getting Started](#getting-started)
-- [Suggested Startup Order](#suggested-startup-order)
-- [Configuration](#configuration)
-- [Testing](#testing)
-- [Troubleshooting](#troubleshooting)
-- [Security Notes](#security-notes)
-- [Future Improvements](#future-improvements)
-- [Contributing](#contributing)
+- [Application sequence](#application-sequence)
+- [Modules](#modules)
+- [REST API reference](#rest-api-reference)
+- [Business workflows](#business-workflows)
+- [Technology stack](#technology-stack)
+- [Running locally](#running-locally)
+- [Known gaps and security notes](#known-gaps-and-security-notes)
 
----
+## Project overview
 
-## Overview
+The project models a health-insurance assistance process in which a citizen application can be registered, supporting information can be collected, eligibility can be evaluated, and a correspondence notice can be generated. A separate benefit-processing batch module exports beneficiary data to a CSV file. The API Gateway provides routed entry points to the service APIs, while Eureka and Config Server modules are intended to support service discovery and externalized configuration.
 
-The project is organized as a collection of independently runnable Java applications. The modules separate business responsibilities from shared infrastructure such as API routing, service discovery, and centralized configuration.
+### Main capabilities
 
-### Main goals
+- Citizen application registration and state lookup.
+- Health-plan administration, including create, list, update, status change, and delete operations.
+- Collection of application case details such as selected plan, income, education, and child information.
+- Eligibility evaluation and creation of a correspondence trigger.
+- Generation and storage of PDF correspondence documents.
+- Batch export of benefit-related records to CSV.
+- Gateway routing and infrastructure modules for service discovery, configuration, and administration.
 
-- Separate business capabilities into focused services.
-- Provide a central API entry point through an API Gateway.
-- Support service registration and discovery through a Eureka Server.
-- Keep application configuration in a dedicated Config Server module.
-- Manage plan information, citizen applications, data-collection cases, eligibility results, benefit processing, and correspondence.
-- Keep the codebase modular so services can be developed and tested independently.
+> **Implementation note:** These are capabilities indicated by the supplied code analyses, not a claim that every module currently builds or that the complete workflow is operational end to end. Known gaps are documented below.
 
 ## Architecture
 
-The diagram below is a **high-level logical view** based on the module names. Exact runtime routes and direct service-to-service calls should be confirmed from the configuration and implementation.
+```mermaid
+flowchart TD
+    Client[API Client] --> Gateway[SSA Cloud API Gateway<br/>Port 7777]
+    Gateway --> Admin[SSA Admin API<br/>Port 7074]
+    Gateway --> Registration[Application Registration Service<br/>Port 7071]
+    Gateway --> Web[SSA Web API<br/>Port 9091]
+    Gateway --> Data[SSA Data Collection Service<br/>Port 7072]
+    Gateway --> Eligibility[SSA Eligibility Determination<br/>Port 7073]
+    Gateway --> Correspondence[SSA Correspondence API<br/>Port 7075]
+    Gateway --> Benefits[SSA Benefit Insurance API<br/>Port 7076]
+    Registration -->|WebClient HTTP call| Web
+    Gateway -. service discovery .-> Eureka[SSA Eureka Server<br/>Port to verify]
+    Config[SSA Config Server<br/>Port to verify] -. external configuration .-> Registration
+    AdminServer[SSA Admin Server<br/>Port to verify] -. monitoring .-> Data
+```
+
+The diagram reflects reported module names, gateway route targets, and configured local ports. It does not guarantee that all services currently build or run together. Some source reports identify missing Java files or external database configuration.
+
+The high-level component view can also be represented with logical infrastructure and business groupings:
 
 ```mermaid
 flowchart TB
@@ -73,45 +84,22 @@ flowchart TB
     Gateway -. routes requests .-> Benefits
     Gateway -. routes requests .-> Correspondence
 
-    Business -. registers with / discovers services through .-> Eureka
+    Web -. service discovery, if configured .-> Eureka
+    Registration -. service discovery, if configured .-> Eureka
+    DataCollection -. service discovery, if configured .-> Eureka
+    Eligibility -. service discovery, if configured .-> Eureka
+    Benefits -. service discovery, if configured .-> Eureka
+    Correspondence -. service discovery, if configured .-> Eureka
     Gateway -. may register with .-> Eureka
-    Business -. retrieves externalized configuration from .-> Config
-    Gateway -. may retrieve configuration from .-> Config
-    AdminServer -. administration/configuration role to verify .-> AdminAPI
+    Registration -. configuration, if configured .-> Config
+    AdminServer -. role to verify .-> AdminAPI
 ```
 
-### Architecture responsibilities
+Dashed links above represent intended or potential relationships; verify each module's actual configuration before treating every link as active. In particular, the Admin Server relationship and whether each service uses Config Server must be confirmed from source configuration.
 
-- **API Gateway:** A central entry point for routing incoming API requests. Confirm the configured routes before relying on specific URLs.
-- **Service discovery:** Eureka provides a registry that applications can use to discover registered service instances when configured to do so.
-- **Centralized configuration:** The Config Server module is intended to provide configuration to applications. Confirm its repository/backend configuration in the source.
-- **Business services:** Each service owns a specific area of the insurance workflow.
+## Application sequence
 
-The dashed arrows indicate intended or possible relationships, not verified runtime routes.
-
-## Services and Modules
-
-The repository contains the following 11 top-level modules.
-
-| Module | Responsibility |
-|---|---|
-| `ApplicationRegistrationService` | Registers citizen/application information. The source contains a `CitizenAppRegistrationEntity`. |
-| `SSA-AdminAPI` | Provides plan-administration functionality. The source contains plan and plan-category entities, a plan operation controller, and a plan management service. |
-| `SSA-AdminServer` | Separate admin-related Spring Boot application. Its exact responsibilities and endpoints should be documented after inspecting its implementation. |
-| `SSA-BenifitInsuranceAPI` | Benefit-insurance operations. The source includes a REST controller and Spring Batch-related configuration/processor classes. |
-| `SSA-CloudAPIGateway` | Gateway application for handling and routing incoming requests. |
-| `SSA-ConfigServerGit` | Config Server application; verify the configured configuration source and repository settings. |
-| `SSA-CorrespondenceAPI` | Correspondence-related operations. The source includes a correspondence management service and `EmailUtils`. |
-| `SSA-DataCollectionService` | Collects application-related data, including child, education, and income information; includes data-collection case entities. |
-| `SSA-ElgibilityDeterminationService` | Eligibility determination operations. The source includes eligibility-related entities, repositories, a controller, and a global exception handler. |
-| `SSA-EurekaServer` | Service-discovery registry application. |
-| `SSA-WEB-API` | Web-facing API module; the source includes `SSAWebOperationRestController`. |
-
-> Several folder names preserve the original project's spelling (for example, `Benifit` and `Elgibility`). They are kept as-is here so the documentation matches the repository paths.
-
-## Illustrative Business Workflow
-
-The following is a **conceptual workflow** for understanding the domain. The exact order and API calls must be verified against the controllers, service implementations, and configuration.
+The following sequence illustrates the intended high-level citizen application journey. It is a business-flow overview, not proof that every arrow is implemented as a synchronous runtime call. The supplied analysis confirms some individual service calls and workflows, while the complete end-to-end orchestration should be verified in the code.
 
 ```mermaid
 sequenceDiagram
@@ -137,250 +125,195 @@ sequenceDiagram
     Web-->>User: Return response
 ```
 
-The diagram describes a possible end-to-end domain journey, not a guarantee that every request passes through every service.
+In the analyzed implementation, eligibility determination creates a pending correspondence trigger, Correspondence API processes pending triggers to generate PDF notices, and the Benefit API launches a batch job that exports records to CSV. Do not interpret the diagram as proof that benefits are paid or email is delivered.
 
-## Technology Stack
+## Modules
 
-The repository structure indicates a Java/Spring application ecosystem. Confirm exact versions and dependencies from each module's `pom.xml`.
+| Module | Responsibility reported by the source analysis | Port | Notes |
+|---|---|---:|---|
+| `ApplicationRegistrationService` | Registers a citizen application after checking the submitted SSN through the SSA Web API. | 7071 | Database configuration is not present in checked-in config; context test reportedly fails without datasource settings. |
+| `SSA-AdminAPI` | Plan registration, listing, lookup, update, status change, deletion, and plan-category listing. | 7074 | `IPlanRepository` source is missing, so the project does not compile as supplied. |
+| `SSA-AdminServer` | Admin/monitoring server module, inferred from folder name. | Not verified | Detailed source analysis was not supplied. |
+| `SSA-BenifitInsuranceAPI` | Starts a Spring Batch job that reads eligibility records and writes a beneficiary CSV. | 7076 | `ElgibilityDetailsEntity` and `IElgibilityDeterminationRepository` sources are missing; datasource/schema are not supplied. |
+| `SSA-CloudAPIGateway` | Routes requests to Eureka-discovered service IDs. | 7777 | Route predicates are documented below. |
+| `SSA-ConfigServerGit` | Config Server-related module, inferred from folder name. | Not verified | Detailed source analysis was not supplied. |
+| `SSA-CorrespondenceAPI` | Processes pending triggers, generates PDF notices, stores PDF bytes, and marks triggers completed. | 7075 | Email sending is commented out; asynchronous summary counters are unreliable. |
+| `SSA-DataCollectionService` | Creates cases, records plan selection, income, education, children, and intends to assemble a summary. | 7072 | `/dc-api/summary` has a path-variable mismatch; `/planNames` currently returns an empty list. |
+| `SSA-ElgibilityDeterminationService` | Evaluates eligibility, saves a determination, and creates a pending correspondence trigger. | 7073 | Uses repository-based persistence; database configuration is incomplete. |
+| `SSA-EurekaServer` | Service registry, inferred from folder name. | Client URL uses port 8761 | Detailed server-source analysis was not supplied; verify actual server configuration. |
+| `SSA-WEB-API` | Maps the final two digits of a numeric SSN input to a hard-coded state string. | 9091 | This is a simple lookup, not comprehensive SSN validation. |
 
-- **Language:** Java
-- **Application framework:** Spring Boot
-- **Build tool:** Apache Maven (each module contains a `pom.xml` and Maven Wrapper files)
-- **Service discovery:** Spring Cloud Netflix Eureka is suggested by the Eureka Server module; verify dependencies in the POMs
-- **API gateway:** Spring Cloud Gateway is suggested by the Cloud API Gateway module; verify the dependency and route configuration
-- **Centralized configuration:** Spring Cloud Config is suggested by the Config Server module; verify the implementation
-- **Persistence:** JPA/repository-style persistence is visible in business modules; the exact database and driver should be confirmed in configuration
-- **Batch processing:** Spring Batch-related classes are present in `SSA-BenifitInsuranceAPI`
-- **Testing:** Test source files are included in the modules
+Folder names retain the spelling used in the repository, including `Benifit` and `Elgibility`.
 
-Do not publish specific Java, Spring Boot, Spring Cloud, database, or port versions in this README until they have been checked against the actual project configuration.
+## REST API reference
 
-## Repository Structure
+Direct URLs below use ports reported in the corresponding service configurations. Gateway path patterns are listed separately; a gateway predicate is not itself proof of the downstream service's complete API contract.
 
-```text
-Insurance System for Health/
-├── ApplicationRegistrationService/
-├── SSA-AdminAPI/
-├── SSA-AdminServer/
-├── SSA-BenifitInsuranceAPI/
-├── SSA-CloudAPIGateway/
-├── SSA-ConfigServerGit/
-├── SSA-CorrespondenceAPI/
-├── SSA-DataCollectionService/
-├── SSA-ElgibilityDeterminationService/
-├── SSA-EurekaServer/
-├── SSA-WEB-API/
-├── .gitignore
-└── README.md
+### Application Registration Service — `http://localhost:7071`
+
+| Method | Endpoint | Input | Response / behavior |
+|---|---|---|---|
+| `POST` | `/CitizenAR-api/save` | JSON `CitizenAppRegistrationInputs`: `fullName`, `email`, `gender`, `phoneNo`, `ssn`, `stateName`, `dob` | `201 Created`, plain text containing the new application ID. Invalid state/SSN path can return `400` with `Invalid SSn`. |
+
+The service calls `GET http://localhost:9091/ssa-web-api/find/{ssn}` using `WebClient`. It compares the returned state with the configured target state (`california` by default) and persists accepted applications. No request-field validation constraints were found in the inspected DTO.
+
+### SSA Admin API — `http://localhost:7074`
+
+| Method | Endpoint | Input | Response / behavior |
+|---|---|---|---|
+| `GET` | `/plan-api/categories` | None | `Map<Integer, String>` of category IDs to names |
+| `POST` | `/plan-api/register` | `PlanData` JSON | `String` result |
+| `GET` | `/plan-api/all` | None | `List<PlanData>` |
+| `GET` | `/plan-api/find/{planId}` | `planId` path variable (`Integer`) | `PlanData`, or `null` when not found |
+| `PUT` | `/plan-api/update` | `PlanData` JSON | `String` result |
+| `DELETE` | `/plan-api/delete/{planId}` | `planId` path variable (`Integer`) | `String` result |
+| `PUT` | `/plan-api/status-change/{planId}/{status}` | `planId` (`Integer`) and `status` (`String`) path variables | `String` result |
+
+`PlanData` contains `planId`, `planName`, `startDate`, `endDate`, `description`, and `activeSw`. The source report identifies a missing `IPlanRepository` file, so the service cannot currently compile as supplied.
+
+### SSA Web API — `http://localhost:9091`
+
+| Method | Endpoint | Input | Response / behavior |
+|---|---|---|---|
+| `GET` | `/ssa-web-api/find/{ssn}` | `ssn` path variable bound to `Integer` | Returns a hard-coded state string for supported remainders; returns `400` with `Invalid ssn` when the integer's string representation is not nine characters long. |
+
+Current mapping from `ssn % 100`: `1` → `washington DC`, `2` → `ohio`, `3` → `teaxas`, `4` → `california`, `5` → `flodra`. Other remainders currently reach the success branch with a null body. These strings reflect the current implementation, not official SSN/state rules.
+
+### Data Collection Service — `http://localhost:7072`
+
+| Method | Endpoint | Input | Response / behavior |
+|---|---|---|---|
+| `GET` | `/dc-api/planNames` | None | `List<String>`; currently returns an empty list |
+| `POST` | `/dc-api/generateCaseNo/{appId}` | `appId` path variable | `Integer`; creates a case only if a citizen-application row already exists in the local database |
+| `PUT` | `/dc-api/updatePlanSelection` | `PlanSectionInputs` JSON | `Integer`; updates a case's plan; returns `0` if case is missing |
+| `POST` | `/dc-api/saveIncome` | `IncomeInputs` JSON | `201 Created`; returns submitted case number |
+| `POST` | `/dc-api/saveEducation` | `EducationInputs` JSON | `201 Created`; returns submitted case number |
+| `POST` | `/dc-api/saveChildren` | JSON array / `List<ChildInputs>` | `201 Created`; persists children and returns the first item's case number |
+| `GET` | `/dc-api/summary` | Handler declares `@PathVariable Integer CaseNo`, but the route has no matching template variable | Intended to return `DcSummaryReport`; mapping is currently incorrect |
+
+DTOs reported include `PlanSectionInputs`, `IncomeInputs`, `EducationInputs`, `ChildInputs`, `CitizenAppRegistrationInputs`, and `DcSummaryReport`. Empty child lists are not handled by the current implementation.
+
+### Eligibility Determination Service — `http://localhost:7073`
+
+| Method | Endpoint | Input | Response / behavior |
+|---|---|---|---|
+| `GET` | `/ed-api/determine/{caseNo}` | `caseNo` path variable (`Integer`); no body/query parameters | `ElgibilityDetailsOutput`; controller reports `201 Created` on success |
+
+The service loads case, plan, applicant and relevant income/child/education records; saves an eligibility determination; and creates a correspondence trigger with status `pending`.
+
+Current rules reported in the implementation (not official policy):
+
+| Plan | Decision condition | Benefit when approved |
+|---|---|---:|
+| `SNAP` | Employee income ≤ 300 | 200 |
+| `CCAP` | Employee income ≤ 300 and at least one child under 16 | 300 |
+| `MEDCARE` | Citizen age ≥ 60 | 200 |
+| `MEDICAID` | Employee income ≤ 300 and property income is zero | 200 |
+| `CAJW` | Employee income is zero and pass-out year is before the current year | 300 |
+| `QHP` | Citizen age > 1 | Not set |
+
+Approved plans receive a start date of the current date and an end date two years later. Some denial messages reportedly do not match the actual conditions.
+
+### Correspondence API — `http://localhost:7075`
+
+| Method | Endpoint | Input | Response / behavior |
+|---|---|---|---|
+| `GET` | `/co-triggers-api/process` | None | `ResponseEntity<CoSummary>` containing `totalTriggers`, `successTriggers`, and `pendingTriggers` |
+
+The service reads pending triggers, loads eligibility/case/applicant records, generates a PDF, stores its bytes in the trigger record, and marks it completed. The email-sending call is commented out. Processing is submitted to a thread pool but the service does not wait for tasks before returning the summary, so the counts may be inaccurate.
+
+### Benefit Insurance API — `http://localhost:7076`
+
+| Method | Endpoint | Input | Response / behavior |
+|---|---|---|---|
+| `GET` | `/bi-api/send` | None | Text containing the Spring Batch job exit status; returns HTTP 200 on normal completion |
+
+The batch job reads eligibility records sorted by `caseNo`, filters/transforms records, and writes `beneficiries_list.csv` in the process working directory. Configured fields include `caseNo`, `holderName`, `holderSSN`, `planName`, `planEndDate`, `benifitAmt`, `bankName`, and `accountNumber`. Accepted benefit amounts are calculated as the stored amount (or zero if absent) multiplied by `1.05` after filtering.
+
+The source report says `ElgibilityDetailsEntity` and `IElgibilityDeterminationRepository` are referenced but absent from source, and database/schema settings are missing. The CSV includes SSN and bank-account fields; treat it as sensitive and never commit it.
+
+### API Gateway routes — `http://localhost:7777`
+
+| Gateway path predicate | Eureka service ID |
+|---|---|
+| `/plan-api/**` | `SSA-ADMINAPI` |
+| `/CitizenAR-api/**` | `ApplicationRegistrationServices` |
+| `/co-triggers-api/**` | `SSA-CorrespondenceAPI` |
+| `/dc-api/**` | `SSA-DataCollectionService` |
+| `/ed-api/**` | `SSA-ElgibilityDeterminationService` |
+| `/ssa-web-api/**` | `SSA-WEB-API` |
+| `/bi-api/**` | `SSA-BenifitInsuranceAPI` |
+
+Routes use `lb://<service-id>` and the analyzed Gateway configuration did not include a rewrite/strip-prefix filter. Target services must register with matching IDs in Eureka. These are path predicates, not additional controller endpoints.
+
+### Framework-provided endpoints
+
+Some services include Actuator and/or Springdoc. Depending on each service's dependencies and configuration, framework routes may include `/actuator`, `/v3/api-docs`, and `/swagger-ui/index.html` or `/swagger-ui.html`. These are dependency-provided routes, not business controller mappings. Confirm exact availability at runtime.
+
+## Business workflows
+
+1. **Registration:** `POST /CitizenAR-api/save` calls the SSA Web API, checks the returned state against the configured state, then saves the application.
+2. **Data collection:** A case is created for an existing application; plan selection, income, education, and child data are stored through the Data Collection API.
+3. **Eligibility:** `GET /ed-api/determine/{caseNo}` evaluates plan rules, stores the decision, and creates a pending correspondence trigger.
+4. **Correspondence:** `GET /co-triggers-api/process` processes pending triggers and generates/stores PDF notices. Email delivery is not active in the inspected source.
+5. **Benefits batch:** `GET /bi-api/send` launches a Spring Batch job that writes beneficiary details to CSV. This does not implement a payment transfer in the reviewed code.
+
+## Technology stack
+
+The individual module reports confirm or declare Java 17, Spring Boot, Spring Web/MVC, Spring Data JPA, MySQL Connector/J in several POMs, Spring Cloud Netflix Eureka Client, Spring Cloud Config Client in selected services, Spring Cloud Gateway, Spring Batch in the Benefit API, Actuator, Spring Boot Admin Client, Springdoc OpenAPI in selected services, OpenPDF in Correspondence API, Lombok, Maven Wrapper, and Spring Boot Test.
+
+Version differences were reported across modules: most business-service analyses list Spring Boot `3.5.8` and Spring Cloud BOM `2025.0.1`, while the Gateway analysis lists Spring Boot `3.5.16` and Spring Cloud BOM `2025.0.3`. Check each module's own `pom.xml` before treating these as a single project-wide version. Spring Security was not found in the analyzed business services.
+
+## Running locally
+
+### Prerequisites
+
+- JDK 17.
+- The Maven Wrapper in each service directory (`mvnw.cmd` on Windows, `./mvnw` on macOS/Linux).
+- Valid database connection settings and schema for JPA services. Several analyses note that datasource URLs, credentials, or schema scripts are absent from checked-in configuration.
+- Eureka Server for discovery and Gateway load balancing.
+- Spring Boot Admin Server if monitoring registration is required.
+- Config Server only where external configuration is intended; several services use an optional Config Server import.
+
+### Build and run an individual service
+
+Run from the relevant service folder.
+
+Windows PowerShell:
+
+```powershell
+.\mvnw.cmd test
+.\mvnw.cmd spring-boot:run
 ```
 
-Each application generally has its own Maven `pom.xml`, Maven Wrapper scripts, Java source code, resources, and test source. Not every module necessarily has the same files.
-
-## Prerequisites
-
-Install the following before running the applications:
-
-1. **JDK:** Install the Java version required by the project POMs.
-2. **Git:** To clone and manage the repository.
-3. **Maven:** Optional if you use the included Maven Wrapper (`mvnw` / `mvnw.cmd`).
-4. **Database:** Install and configure the database required by each service, based on its YAML configuration.
-5. **IDE:** IntelliJ IDEA, Eclipse, or another Java IDE is recommended.
-
-Check the Java and Git installations:
+macOS/Linux:
 
 ```bash
-java -version
-git --version
-```
-
-On Windows, use `mvnw.cmd` from a module directory. On Linux/macOS, use `./mvnw`.
-
-## Getting Started
-
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/shivam-kg-se/health-insurance-microservices.git
-cd health-insurance-microservices
-```
-
-### 2. Inspect service configuration
-
-Before starting the services, inspect each module's `application.yml` or `application.yaml` and `pom.xml`.
-
-Check at least:
-
-- `server.port`
-- `spring.application.name`
-- Eureka client URL and registration settings
-- Config Server URL / import settings
-- Database URL, username, driver, and schema
-- Gateway routes and service IDs
-- Any required mail or external-service settings
-
-Use environment variables or local configuration for credentials. Do not commit passwords, API keys, tokens, or other secrets.
-
-### 3. Build a module
-
-From a module directory on Windows:
-
-```bash
-cd SSA-EurekaServer
-mvnw.cmd clean package
-```
-
-On Linux/macOS:
-
-```bash
-cd SSA-EurekaServer
-./mvnw clean package
-```
-
-Repeat for the required modules. A root-level Maven build is not guaranteed because the repository currently appears to contain separate Maven projects rather than one parent multi-module build.
-
-### 4. Run a module
-
-From the selected module directory on Windows:
-
-```bash
-mvnw.cmd spring-boot:run
-```
-
-On Linux/macOS:
-
-```bash
+./mvnw test
 ./mvnw spring-boot:run
 ```
 
-Start one service at a time and verify its startup logs before proceeding. The exact commands may need adjustment if a module's POM does not include the Spring Boot Maven plugin.
+The available reports identify these blockers or caveats:
 
-## Suggested Startup Order
+- `SSA-AdminAPI`: missing `IPlanRepository` source.
+- `SSA-BenifitInsuranceAPI`: missing `ElgibilityDetailsEntity` and `IElgibilityDeterminationRepository` sources, plus missing datasource/schema configuration.
+- `ApplicationRegistrationService`: datasource configuration is missing; its context-load test reportedly fails while determining a suitable driver.
+- `SSA-DataCollectionService`: datasource configuration is incomplete and `/dc-api/summary` has a path-variable mismatch.
+- `SSA-AdminServer`, `SSA-ConfigServerGit`, and `SSA-EurekaServer`: module names were supplied, but their detailed source analyses were not; verify their actual ports, profiles, and startup requirements from their own source files.
 
-Use this as a **starting point only**; confirm the actual dependencies and configuration before following it.
+## Known gaps and security notes
 
-1. `SSA-ConfigServerGit` — if the other services import configuration from it.
-2. `SSA-EurekaServer` — if the services register with Eureka.
-3. Business applications such as registration, admin, data collection, eligibility, benefit insurance, and correspondence.
-4. `SSA-AdminServer` and `SSA-WEB-API` as required by their configuration and role.
-5. `SSA-CloudAPIGateway` after the destination services and routes are configured.
+- Some services perform state-changing work through `GET` endpoints (`/ed-api/determine/{caseNo}`, `/co-triggers-api/process`, `/bi-api/send`). Consider `POST` for operations that mutate data or start jobs.
+- The Data Collection `summary` mapping is inconsistent, and `planNames` currently returns an empty list.
+- The SSA Web API uses a hard-coded remainder mapping rather than comprehensive SSN validation.
+- Correspondence processing has asynchronous task/counter issues and does not actively send email.
+- The Benefit API produces a CSV containing SSN and bank account data. Do not commit it or expose it publicly.
+- Some service configurations expose all Actuator endpoints and environment values. Restrict management endpoints and protect sensitive configuration before deployment.
+- The supplied analyses did not find Spring Security configuration in the documented business services. Do not assume authentication is enforced.
+- Database settings and schema setup are incomplete in multiple modules.
+- Detailed implementation for `SSA-AdminServer`, `SSA-ConfigServerGit`, and `SSA-EurekaServer` remains to be verified.
 
-If the Config Server depends on Eureka, or if services have different bootstrap requirements, adjust the order accordingly. Review startup logs and health endpoints rather than assuming that a process starting means the whole system is ready.
+## Author
 
-## Configuration
-
-Configuration files are located under each module's `src/main/resources/` directory. File names vary between `application.yml` and `application.yaml`.
-
-Example checklist (not a copy-paste configuration):
-
-```yaml
-# Illustrative keys only; use the actual values from your project.
-spring:
-  application:
-    name: service-name
-
-server:
-  port: <configured-port>
-```
-
-Replace placeholders with the real settings. Do not paste real secrets into the README or public issue trackers.
-
-### Configuration checklist
-
-- [ ] Confirm every service's application name and port.
-- [ ] Confirm whether the Config Server is actually used by each service.
-- [ ] Confirm Eureka registration and discovery settings.
-- [ ] Document gateway route predicates and destination service IDs.
-- [ ] Document database type and schema setup.
-- [ ] Document any email, file, or other external integrations.
-- [ ] Move sensitive values out of committed configuration files.
-
-## Testing
-
-The repository contains test source files for the modules. Run tests from an individual module directory:
-
-```bash
-mvnw.cmd test
-```
-
-Use `./mvnw test` on Linux/macOS.
-
-For a broader verification pass:
-
-1. Run unit tests for each module.
-2. Verify that each service can start with its intended configuration.
-3. Verify Eureka registration where enabled.
-4. Exercise gateway routes with a REST client.
-5. Test key business flows across service boundaries.
-6. Confirm error responses and validation behavior.
-
-The presence of test files does not by itself guarantee that all tests pass; record the actual results after running them.
-
-## Troubleshooting
-
-### Service fails during startup
-
-- Check the first meaningful exception in the logs.
-- Confirm the configured Java version matches the project.
-- Confirm the configured port is not already in use.
-- Verify the required database and configuration server are reachable.
-
-### Service does not appear in Eureka
-
-- Check the Eureka client dependency and configuration.
-- Confirm the registry URL and network connectivity.
-- Verify the service's application name and registration settings.
-
-### Gateway returns 404 or cannot reach a service
-
-- Inspect the gateway route configuration.
-- Confirm the route's service ID or destination URI matches the running service.
-- Check whether service discovery is enabled and the destination service is healthy.
-- Confirm the request path and HTTP method match the controller mapping.
-
-### Database connection errors
-
-- Verify database URL, driver, credentials, and schema.
-- Confirm the database is running and reachable.
-- Keep credentials outside source control.
-
-### Maven build fails
-
-- Check the JDK and Maven Wrapper versions.
-- Read the first compiler or dependency-resolution error.
-- Run `mvnw.cmd clean test` (Windows) or `./mvnw clean test` (Linux/macOS) inside the failing module.
-
-## Security Notes
-
-- Never commit real database passwords, email credentials, API keys, or tokens.
-- Avoid storing personal or sensitive citizen data in sample files or public test fixtures.
-- Use appropriate authentication, authorization, validation, and secure transport for deployed environments.
-- Review generated reports and PDFs before publishing the repository to ensure they do not contain confidential information.
-- Configure production secrets through environment variables or a dedicated secrets-management solution.
-
-## Future Improvements
-
-Possible improvements to consider as the project evolves:
-
-- Add a verified architecture diagram showing actual routes and dependencies.
-- Document API endpoints and example request/response payloads.
-- Add health checks and consistent service observability.
-- Add integration tests for cross-service workflows.
-- Add Dockerfiles and Docker Compose for repeatable local startup, if containerization is desired.
-- Add CI to build and test each service automatically.
-- Document database schema and migration strategy.
-- Standardize exception responses and API validation.
-- Document service security and operational requirements.
-
-## Contributing
-
-1. Create a feature branch.
-2. Make focused changes in the relevant service.
-3. Run the tests for the changed module.
-4. Update documentation when APIs, configuration, or service responsibilities change.
-5. Open a pull request with a clear summary and test results.
-
----
-
-## Project Status
-
-This README is an initial project overview and can be refined as the implementation evolves. Replace illustrative flows with verified behavior, and add confirmed ports, endpoint tables, setup details, screenshots, and deployment instructions as they become available.
+**Shivam Kumar Gupta**  
+GitHub: [shivam-kg-se](https://github.com/shivam-kg-se)
